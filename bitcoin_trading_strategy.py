@@ -44,10 +44,8 @@ btc = yf.Ticker("BTC-USD")
 # get historical market data
 hist = btc.history(period="max")
 df = hist[['Open', 'High', 'Low', 'Close', 'Volume']]
-print(df.tail()); print(); print(df.shape)
-
 df = df.sort_index(ascending=True)
-df.head()
+print(df.tail()); print(); print(df.shape)
 
 df.describe()
 
@@ -66,28 +64,32 @@ fig.update_layout(title='Last 30 days BTC price', yaxis_title='BTC (US$)')
 fig.show()
 
 btc = df[['Close']]
-btc['daily_difference'] = btc['Close'].diff()
-btc.head()
-
+btc['daily_difference'] = btc['Close'].diff() # difference in the close prices between two consecutive days
+"""
+differenced price is negative this means the price on the previous day was higher than the price the following day, so we
+can buy. Positive value, means that we can sell because the price is higher.
+"""
 btc['signal'] = 0.0
 btc['signal'] = np.where(btc['daily_difference'] > 0, 1.0, 0.0)
-btc.head()
-
+"""
+positive value 1, otherwise, the value is 0
+"""
 btc['positions'] = btc['signal'].diff()
+"""
+It is not advisable to buy or sell constantly when price moving down, or up. To restrict buy/sell applied diff()
+"""
 btc.head()
 
 btc.positions.value_counts()
 
-# For each day where open price > 0, we set the signal 1 means sell  and < 0, we set signal 0, to buy 
+plt.style.use('dark_background')
 
 print('\033[4mFor each day where Close price = Buy = red arrow head  and Sell = green arrow head \033[0m')
 buys = btc.loc[btc['positions'] == 1]
 sells = btc.loc[btc['positions'] == -1]
-
 # Plot 
 fig = plt.figure(figsize=(15, 5))
 plt.plot(btc.index, btc['Close'], color = 'gray', lw=2., label='Close price')
-
 # Plot the buy and sell signals on the same plot
 plt.plot(buys.index, btc.loc[buys.index]['Close'], '^', markersize=3, color='r',
           label='Buy')
@@ -97,30 +99,22 @@ plt.ylabel('BTC Price (USD)')
 plt.xlabel('Date')
 plt.title('Buy and sell signals plot')
 plt.legend(loc=0)
-
-# Display everything
 plt.show()
 
 # Initialize the short and long windows
 short_window = 10
 long_window = 30
-
-# Initialize the `signals` DataFrame with the `signal` column
+# Initialize the `signals` DataFrame with the `trade` column
 trade = btc[['Close']]
 trade['signal'] = 0.0
-
-# Create short simple moving average over the short window
+# short simple moving average over the short window
 trade['short_ma'] = btc['Close'].rolling(window=short_window).mean()
-
-# Create long simple moving average over the long window
+# long simple moving average over the long window
 trade['long_ma'] = btc['Close'].rolling(window=long_window).mean()
-# Create signals
+# signals generation
 trade['signal'][short_window:] = np.where(trade['short_ma'][short_window:] < trade['long_ma'][short_window:], 1.0, 0.0)   
-
-# Generate trading orders
+# trading orders
 trade['positions'] = trade['signal'].diff()
-
-# Print `signals`
 print(trade.tail())
 
 #.dropna(inplace=True)
@@ -135,16 +129,12 @@ fig = plt.figure(figsize=(15, 5))
 plt.plot(trade.index, trade['Close'], color='g', lw=.5, label='Close price')
 # Plot the short and long moving averages
 plt.plot(trade[['short_ma', 'long_ma']])
-plt.plot(buys.index, trade.loc[buys.index]['Close'],
-         '^', markersize=7, color='red', label='Buy')
-plt.plot(sells.index, trade.loc[sells.index]['Close'],
-         'v', markersize=7, color='blue', label = 'Sell')
+plt.plot(buys.index, trade.loc[buys.index]['Close'], '^', markersize=7, color='red', label='Buy')
+plt.plot(sells.index, trade.loc[sells.index]['Close'], 'v', markersize=7, color='blue', label = 'Sell')
 plt.ylabel('BTC Price (USD)')
 plt.xlabel('Date')
 plt.legend(["Price","Short mavg","Long mavg","Buy","Sell"])
 plt.title("Dual SMA Strategy")
-
-# Display everything
 plt.show()
 
 #print('\033[4mLast 5 Buy signal \033[0m')
@@ -160,23 +150,14 @@ plt.show()
 df.tail()
 
 def trading_strategy(df, window_size):
-    #newSt = pd.DataFrame(index=df.index)
     newSt = df[['Close']]
     newSt['orders'] = 0
-    # window_size-days high
     newSt['High'] = df['Close'].shift(1).rolling(window=window_size).max()
-    # window_size-days low
     newSt['Low'] = df['Close'].shift(1).rolling(window=window_size).min()
-    # window_size-days mean
     newSt['Avg'] = df['Close'].shift(1).rolling(window=window_size).mean()
-
-    # entry rule : stock price > the higest value for window_size day
-    #              stock price < the lowest value for window_size day
 
     newSt['long_entry'] = df['Close'] > newSt.High
     newSt['short_entry'] = df['Close'] < newSt.Low
-
-    #exit rule : the stock price crosses the mean of past window_size days.
 
     newSt['long_exit'] = df['Close'] < newSt.Avg
     newSt['short_exit'] = df['Close'] > newSt.Avg
@@ -201,63 +182,219 @@ def trading_strategy(df, window_size):
 
     return newSt
 
-#newSt = df[['Close']]
-#newSt
-
-#ts
-
-ts=trading_strategy(df, 24)
-
-buys = ts.loc[ts['orders'] == 1]
-sells = ts.loc[ts['orders'] == -1]
+series = trading_strategy(df, 24)
+buys = series.loc[ts['orders'] == 1]
+sells = series.loc[ts['orders'] == -1]
 
 fig = plt.figure(figsize=(15,6))
-plt.plot(df["Close"], color='g', lw=.5)
-plt.plot(ts["High"], color='g', lw=.5)
-plt.plot(ts["Low"], color='r', lw=.5)
-plt.plot(ts["Avg"], color='b', lw=.5)
-plt.plot(buys.index, ts.loc[buys.index]['Close'],
-         '^', markersize=5, color='blue', label='Buy')
-plt.plot(sells.index, ts.loc[sells.index]['Close'],
-         'v', markersize = 3, color='r', label = 'Sell')
-plt.legend(["Price","Highs","Lows","Average","Buy","Sell"])
-plt.title("Bitcoin New Trading Strategy")
+plt.plot(df["Close"], color='g', lw=.5); plt.plot(series["High"], color='g', lw=.5)
+plt.plot(series["Low"], color='r', lw=.5); plt.plot(series["Avg"], color='b', lw=.5)
+plt.plot(buys.index, series.loc[buys.index]['Close'],'^', markersize=5, color='blue', label='Buy')
+plt.plot(sells.index, series.loc[sells.index]['Close'],'v', markersize = 3, color='r', label = 'Sell')
+plt.legend(["Close price","High price","Low price","Average price","Buy","Sell"])
+plt.title("Bitcoin New Trading Strategy"); plt.show()
 
-plt.show()
+series.orders.value_counts()
 
-ts.orders.value_counts()
+series.tail(2)
+
+# Set the initial capital
+initial_capital= float(100000.0)
+# Create a DataFrame `positions`
+positions = pd.DataFrame(index=series.index).fillna(0.0)
+# Buy a 100 shares
+positions['BTC'] = 10*series['orders']   
+ 
+# Initialize the portfolio with value owned   
+portfolio = positions.multiply(series['Close'], axis=0)
+
+# Store the difference in shares owned 
+pos_diff = positions.diff()
+
+# Add `holdings` to portfolio
+portfolio['holdings'] = (pos_diff.multiply(series['Close'], axis=0)).sum(axis=1)
+
+# Add `cash` to portfolio
+portfolio['cash'] = initial_capital - (pos_diff.multiply(series['Close'], axis=0)).sum(axis=1).cumsum()   
+
+# Add `total` to portfolio
+portfolio['total'] = portfolio['cash'] + portfolio['holdings']
+
+# Add `returns` to portfolio
+portfolio['returns'] = portfolio['total'].pct_change()
+
+# Print the first lines of `portfolio`
+portfolio.tail()
 
 import statistics as stats
 import math as math
 
-window = 21
-no_of_std = 2
+window = 21; no_of_std = 2
 
-rolling_mean = df.Close.rolling(window).mean()
-rolling_std = df.Close.rolling(window).std()
+rolling_mean = df.Close.rolling(window).mean(); rolling_std = df.Close.rolling(window).std()
 
 df['bb_up'] = (rolling_mean + (rolling_std* no_of_std)).fillna(0.0)
 df['bb_middle'] =  df['Close'].rolling(window).mean()
 df['bb_low'] = (rolling_mean - (rolling_std* no_of_std)).fillna(0.0)
 
-
 fig = plt.figure(figsize = (15,6))
-plt.plot(df.Close, color ='b', lw=2.)
-plt.plot(df.bb_up, color='g', lw=2.)
-plt.plot(df.bb_middle, color='gray', lw=2. )
-plt.plot(df.bb_low, color ='r', lw=2.)
+plt.plot(df.Close, color ='b', lw=2.); plt.plot(df.bb_up, color='g', lw=2.)
+plt.plot(df.bb_middle, color='gray', lw=2. ); plt.plot(df.bb_low, color ='r', lw=2.)
 
-plt.legend(["Price","Bollinger band Upper","Bollinger bands lower"])
+plt.legend(["Price","Bollinger band Upper", "Bollinger band Middle","Bollinger bands lower"])
 plt.title("Bitcoin price with Bollinger bands")
 
 plt.show()
+
+df['Position'] = None
+for row in range(len(df)):
+  if (df['Close'].iloc[row] > df['bb_up'].iloc[row]) and (df['Close'].iloc[row-1] < df['bb_up'].iloc[row-1]):
+    df['Position'].iloc[row] = -1
+        
+  if (df['Close'].iloc[row] < df['bb_low'].iloc[row]) and (df['Close'].iloc[row-1] > df['bb_low'].iloc[row-1]):
+      df['Position'].iloc[row] = 1  
+df['Position'].fillna(method='ffill',inplace=True)
+df['Market Return'] = np.log(df['Close'] / df['Close'].shift(1))
+df['Strategy Return'] = df['Market Return'] * df['Position'].shift(1)
+df['Strategy Return'].cumsum().plot(figsize=(15,5))
+plt.title('Bollinger bands strategy')
+plt.show()
+
+df['Position'] = None
+for row in range(len(df)):
+  if (df['Close'].iloc[row] > df['bb_up'].iloc[row]) and (df['Close'].iloc[row-1] < df['bb_up'].iloc[row-1]):
+    df['Position'].iloc[row] = -1
+        
+  if (df['Close'].iloc[row] < df['bb_low'].iloc[row]) and (df['Close'].iloc[row-1] > df['bb_low'].iloc[row-1]):
+      df['Position'].iloc[row] = 1  
+df['Position'].fillna(method='ffill',inplace=True)
+df.tail()
+
+df['Position'] = None
+for row in range(len(df)):
+  if (df['Close'].iloc[row] > df['bb_up'].iloc[row]) and (df['Close'].iloc[row-1] < df['bb_up'].iloc[row-1]):
+    df['Position'].iloc[row] = -1
+        
+  if (df['Close'].iloc[row] < df['bb_low'].iloc[row]) and (df['Close'].iloc[row-1] > df['bb_low'].iloc[row-1]):
+      df['Position'].iloc[row] = 1  
+df['Position'].fillna(method='ffill',inplace=True)
+df['Market Return'] = np.log(df['Close'] / df['Close'].shift(1))
+df['Strategy Return'] = df['Market Return'] * df['Position'].shift(1)
+df['Strategy Return'].cumsum().plot(figsize=(15,5))
+plt.title('Bollinger bands strategy')
+plt.show()
+
+def bollinger_strat(df,window,std):
+    rolling_mean = df['Close'].rolling(window).mean()
+    rolling_std = df['Close'].rolling(window).std()
+    
+    df['bb_up'] = rolling_mean + (rolling_std * no_of_std)
+    df['bb_low'] = rolling_mean - (rolling_std * no_of_std)
+    
+    df['Short'] = None
+    df['Long'] = None
+    df['Position'] = None
+    
+    for row in range(len(df)):
+    
+        if (df['Close'].iloc[row] > df['bb_up'].iloc[row]) and (df['Close'].iloc[row-1] < df['bb_up'].iloc[row-1]):
+            df['Position'].iloc[row] = -1
+        
+        if (df['Close'].iloc[row] < df['bb_low'].iloc[row]) and (df['Close'].iloc[row-1] > df['bb_low'].iloc[row-1]):
+            df['Position'].iloc[row] = 1
+            
+    df['Position'].fillna(method='ffill',inplace=True)
+    
+    df['Market Return'] = np.log(df['Close'] / df['Close'].shift(1))
+    df['Strategy Return'] = df['Market Return'] * df['Position'].shift(1)
+    
+    df['Strategy Return'].cumsum().plot()
+
+bollinger_strat(df, 50, 2)
 
 df.tail(2)
 
 n=14
 df['stok'] = ((df.Close - df.Low.rolling(n).min()) / (df.High.rolling(n).max() - df.Low.rolling(n).min())) * 100
 df['stod'] = df['stok'].rolling(3).mean() 
+df.plot(y=['Close'], figsize = (20, 5))
+plt.title("Bitcoin price ")
+df.plot(y=['stok', 'stod'], figsize = (20, 5))
+plt.title("Bitcoin price with STOCHASTIC OSCILLATOR")
+
+plt.show()
+
+df['etnter_sell'] = ((df['stok'] < df['stod']) & (df['stok'].shift(1) > df['stod'].shift(1))) & (df['stod'] > 75) 
+df['exit_sale'] = ((df['stok'] > df['stod']) & (df['stok'].shift(1) < df['stod'].shift(1)))
+df['short'] = np.nan 
+df.loc[df['etnter_sell'],'short'] = -1 
+df.loc[df['exit_sale'],'short'] = 0 
+# initial position on day 1 to flat 
+df['short'][0] = 0
+df['short'] = df['short'].fillna(method='pad') 
+df['enter_buy'] = ((df['stok'] > df['stod']) & (df['stok'].shift(1) < df['stod'].shift(1))) & (df['stod'] < 25) 
+df['exit_buy'] = ((df['stok'] < df['stod']) & (df['stok'].shift(1) > df['stod'].shift(1)))
+df['long'] = np.nan  
+df.loc[df['enter_buy'],'long'] = 1  
+df.loc[df['exit_buy'],'long'] = 0 
+df['long'][0] = 0  
+# Forward fill the position column to represent the holding of positions through time 
+df['long'] = df['long'].fillna(method='pad') 
+# Add Long and Short positions together to get final strategy position (1 for long, -1 for short and 0 for flat) 
+df['position'] = df['long'] + df['short']
+df['position'].plot(figsize=(15,6))
+plt.show()
+
+df['Market Returns'] = df['Close'].pct_change()
+df['Strategy Returns'] = df['Market Returns'] * df['Position'].shift(1)
+df[['Strategy Returns','Market Returns']].cumsum().plot(figsize=(15,5))
+plt.show()
+
+# Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2))
+nine_period_high = df['High'].rolling(window= 9).max()
+nine_period_low = df['Low'].rolling(window= 9).min()
+df['tenkan_sen'] = (nine_period_high + nine_period_low) /2
+# Kijun-sen (Base Line): (26-period high + 26-period low)/2))
+period26_high = df['High'].rolling(window=26).max()
+period26_low = df['Low'].rolling(window=26).min()
+df['kijun_sen'] = (period26_high + period26_low) / 2
+# Senkou Span A (Leading Span A): (Conversion Line + Base Line)/2))
+df['senkou_span_a'] = ((df['tenkan_sen'] + df['kijun_sen']) / 2).shift(26)
+# Senkou Span B (Leading Span B): (52-period high + 52-period low)/2))
+period52_high = df['High'].rolling(window=52).max()
+period52_low = df['Low'].rolling(window=52).min()
+df['senkou_span_b'] = ((period52_high + period52_low) / 2).shift(26)
+# The most current closing price plotted 26 time periods behind (optional)
+df['chikou_span'] = df['Close'].shift(-26)
 df.tail()
 
-df.plot(y=['Close'], figsize = (20, 5))
-df.plot(y=['stok', 'stod'], figsize = (20, 5))
+plt.figure(figsize= (15,6))
+plt.plot(df.Close)
+plt.plot(df.tenkan_sen)
+plt.plot(df.kijun_sen)
+plt.plot(df.senkou_span_a)
+plt.plot(df.senkou_span_b)
+plt.plot(df.chikou_span)
+plt.legend(["Price","tenkan_sen",	'kijun_sen','senkou_span_a',
+            'senkou_span_b','chikou_span'])
+plt.title('Ichimoku strategy Bitcoin')
+plt.show()
+
+# turning line
+high = df.High.rolling(window=9, center=False).max()
+low = df.Low.rolling(window=9, center=False).min()
+turning_line = (high + low) / 2
+
+# standard line
+p26_high = df.High.rolling(window=26, center=False).max()
+p26_low = df.Low.rolling(window=26, center=False).min()
+standard_line = (p26_high + p26_low)/2
+
+# leading span1
+df['ichimoku_span1'] = ((turning_line + standard_line)/2).shift(26)
+
+# leading span2
+p52_high = df.High.rolling(window=52, center=False).max()
+p52_low = df.Low.rolling(window=52, center=False).min()
+standard_line = (p52_high + p52_low)/2
+df['ichimoku_span2'] = ((turning_line + standard_line)/2).shift(26)
