@@ -226,3 +226,38 @@ plt.title("Bitcoin New Trading Strategy")
 plt.show()
 
 ts.orders.value_counts()
+
+import statistics as stats
+import math as math
+
+window = 21
+no_of_std = 2
+
+rolling_mean = df.Close.rolling(window).mean()
+rolling_std = df.Close.rolling(window).std()
+
+df['bb_up'] = (rolling_mean + (rolling_std* no_of_std)).fillna(0.0)
+df['bb_middle'] =  df['Close'].rolling(window).mean()
+df['bb_low'] = (rolling_mean - (rolling_std* no_of_std)).fillna(0.0)
+
+
+fig = plt.figure(figsize = (15,6))
+plt.plot(df.Close, color ='b', lw=2.)
+plt.plot(df.bb_up, color='g', lw=2.)
+plt.plot(df.bb_middle, color='gray', lw=2. )
+plt.plot(df.bb_low, color ='r', lw=2.)
+
+plt.legend(["Price","Bollinger band Upper","Bollinger bands lower"])
+plt.title("Bitcoin price with Bollinger bands")
+
+plt.show()
+
+df.tail(2)
+
+n=14
+df['stok'] = ((df.Close - df.Low.rolling(n).min()) / (df.High.rolling(n).max() - df.Low.rolling(n).min())) * 100
+df['stod'] = df['stok'].rolling(3).mean() 
+df.tail()
+
+df.plot(y=['Close'], figsize = (20, 5))
+df.plot(y=['stok', 'stod'], figsize = (20, 5))
